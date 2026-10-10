@@ -16,7 +16,21 @@ android {
         versionName = "0.2.0"
     }
 
+    // A fixed debug key so every CI build can install over the previous one.
+    // It's a debug-only key with a public password; use a private key for any real release.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("hopshare-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
