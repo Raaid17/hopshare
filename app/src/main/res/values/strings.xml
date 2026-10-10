@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">HopShare</string>
+    <string name="notif_channel">Sharing status</string>
+
+    <string name="status_idle">Not sharing. Mobile data on, Wi-Fi on (not connected), then tap Start.</string>
+    <string name="status_starting">Starting Wi-Fi Direct group…</string>
+    <string name="status_running">Sharing · %1$d device(s) joined · %2$d open connection(s)</string>
+
+    <string name="action_start">Start sharing</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_regenerate">New network password</string>
+
+    <string name="label_ssid">Network name</string>
+    <string name="label_pass">Password</string>
+    <string name="label_proxy">Proxy (HTTP + HTTPS)</string>
+    <string name="label_pac">Auto-config URL (optional)</string>
+    <string name="tap_to_copy">Tap a value to copy it.</string>
+
+    <string name="idle_hint">Network: %1$s\nPassword: %2$s</string>
+    <string name="regenerated">New name and password saved</string>
+    <string name="copied">Copied</string>
+    <string name="wifi_off">Turn Wi-Fi on — it doesn\'t need to connect to a network</string>
+    <string name="permission_needed">HopShare needs the Nearby devices (or Location) permission to create the network</string>
+
+    <string name="how_to">On the other device:\n1. Join the network above.\n2. Set its proxy to Manual with the host and port shown (or use the auto-config URL).\n\nOnly apps that respect the system proxy get internet: browsers, most apps. Games, VPNs and anything UDP-based won\'t.</string>
+</resources>

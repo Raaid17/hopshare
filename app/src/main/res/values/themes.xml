@@ -1,0 +1,23 @@
+<resources>
+    <style name="Theme.HopShare" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/hop_primary</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+    </style>
+
+    <style name="HopLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:textAppearance">?attr/textAppearanceLabelMedium</item>
+    </style>
+
+    <style name="HopValue">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textAppearance">?attr/textAppearanceTitleMedium</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:paddingVertical">4dp</item>
+    </style>
+</resources>
