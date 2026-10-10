@@ -28,12 +28,18 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import android.net.wifi.p2p.WifiP2pDevice
 import java.net.InetAddress
 
 /**
@@ -79,6 +85,7 @@ class HopService : Service() {
     private lateinit var p2p: WifiP2pManager
     private var channel: WifiP2pManager.Channel? = null
     private var proxy: ProxyServer? = null
+    private var statsJob: Job? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var receiverRegistered = false
@@ -105,7 +112,12 @@ class HopService : Service() {
         p2p = getSystemService(WIFI_P2P_SERVICE) as WifiP2pManager
         createChannel()
         // Keep the notification in sync with state.
-        scope.launch { state.collect { if (active) notify(it) } }
+        // Only re-post the notification when what it shows changes, not on every byte count.
+        scope.launch {
+            state.map { s ->
+                if (s is HopState.Running) Triple(s.ssid, s.peers.size, s.connections) else s
+            }.distinctUntilChanged().collect { if (active) notify(state.value) }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -129,8 +141,10 @@ class HopService : Service() {
     }
 
     override fun onDestroy() {
+        // Only reset state if this instance was still sharing; a restart may already be underway.
+        val wasActive = active
         shutdown()
-        if (_state.value !is HopState.Failed) _state.value = HopState.Idle
+        if (wasActive) _state.value = HopState.Idle
         scope.cancel()
         super.onDestroy()
     }
@@ -211,9 +225,7 @@ class HopService : Service() {
         p2p.requestConnectionInfo(ch) { info ->
             if (!active) return@requestConnectionInfo
             val goAddress = info?.groupOwnerAddress ?: DEFAULT_GO_ADDRESS
-            val server = ProxyServer(goAddress, PROXY_PORT) { n ->
-                _state.update { if (it is HopState.Running) it.copy(connections = n) else it }
-            }
+            val server = ProxyServer(goAddress, PROXY_PORT)
             // Binding can fail for a moment while the p2p interface is still configuring.
             Thread {
                 var lastError: Exception? = null
@@ -228,8 +240,9 @@ class HopService : Service() {
                                 passphrase = group.passphrase ?: creds.passphrase,
                                 proxyHost = goAddress.hostAddress ?: "192.168.49.1",
                                 proxyPort = PROXY_PORT,
-                                devices = group.clientList.size,
+                                peers = group.clientList.toPeers(),
                             )
+                            startStatsLoop()
                         }
                         return@Thread
                     } catch (e: Exception) {
@@ -247,10 +260,32 @@ class HopService : Service() {
         val ch = channel ?: return
         if (!active || !hasPermissions()) return
         p2p.requestGroupInfo(ch) { group ->
-            val count = group?.clientList?.size ?: 0
-            _state.update { if (it is HopState.Running) it.copy(devices = count) else it }
+            val peers = group?.clientList?.toPeers().orEmpty()
+            _state.update { if (it is HopState.Running) it.copy(peers = peers) else it }
         }
     }
+
+    /** Push proxy stats into the state once a second while running. */
+    private fun startStatsLoop() {
+        statsJob?.cancel()
+        statsJob = scope.launch {
+            while (isActive && active) {
+                proxy?.let { p ->
+                    val snap = p.snapshot()
+                    _state.update { if (it is HopState.Running) it.copy(clients = snap) else it }
+                }
+                delay(1_000)
+            }
+        }
+    }
+
+    private fun Collection<WifiP2pDevice>.toPeers() = map { d ->
+        val addr = d.deviceAddress.orEmpty()
+        // Devices joining as a normal Wi-Fi network (laptops, iPhones) often report no name.
+        val name = d.deviceName?.takeIf { it.isNotBlank() }
+            ?: "Device ${addr.takeLast(5).uppercase()}".trim()
+        Peer(name, addr)
+    }.sortedBy { it.name.lowercase() }
 
     // --------------------------------------------------------------- teardown
 
@@ -265,6 +300,8 @@ class HopService : Service() {
         if (!active) return
         active = false
         handler.removeCallbacksAndMessages(null)
+        statsJob?.cancel()
+        statsJob = null
         proxy?.stop()
         proxy = null
         channel?.let { ch ->
@@ -330,7 +367,7 @@ class HopService : Service() {
         )
         val (title, text) = when (state) {
             is HopState.Running -> state.ssid to
-                "Proxy ${state.proxyAddress} · ${state.devices} device(s) · ${state.connections} conn"
+                "${state.peers.size} device(s) joined · ${state.connections} open connection(s)"
             else -> getString(R.string.app_name) to getString(R.string.status_starting)
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)

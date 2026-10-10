@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Minimal HTTP/HTTPS forward proxy.
@@ -28,11 +29,19 @@ import java.util.concurrent.atomic.AtomicInteger
 class ProxyServer(
     private val bindAddress: InetAddress,
     val port: Int,
-    private val onConnectionsChanged: (Int) -> Unit,
 ) {
+    /** Live per-device counters, keyed by client IP. */
+    private class Stats {
+        val active = AtomicInteger(0)
+        val up = AtomicLong(0)
+        val down = AtomicLong(0)
+        @Volatile var lastSeen = System.currentTimeMillis()
+        @Volatile var hint: String? = null
+    }
+
     private val pool: ExecutorService = Executors.newCachedThreadPool()
     private val sockets: MutableSet<Socket> = ConcurrentHashMap.newKeySet<Socket>()
-    private val active = AtomicInteger(0)
+    private val stats = ConcurrentHashMap<String, Stats>()
     @Volatile private var running = false
     private var server: ServerSocket? = null
 
@@ -53,8 +62,16 @@ class ProxyServer(
         sockets.forEach { runCatching { it.close() } }
         sockets.clear()
         pool.shutdownNow()
-        active.set(0)
-        onConnectionsChanged(0)
+        stats.clear()
+    }
+
+    /** Current per-device stats, most recently active first. Drops devices idle for 30 min. */
+    fun snapshot(): List<ProxyClient> {
+        val cutoff = System.currentTimeMillis() - STALE_MS
+        stats.entries.removeIf { (_, s) -> s.active.get() == 0 && s.lastSeen < cutoff }
+        return stats.map { (ip, s) ->
+            ProxyClient(ip, s.active.get(), s.up.get(), s.down.get(), s.lastSeen, s.hint)
+        }.sortedByDescending { it.lastSeenMs }
     }
 
     private fun acceptLoop(ss: ServerSocket) {
@@ -75,7 +92,10 @@ class ProxyServer(
 
     private fun handle(client: Socket) {
         sockets += client
-        onConnectionsChanged(active.incrementAndGet())
+        val ip = client.inetAddress?.hostAddress ?: "unknown"
+        val stat = stats.computeIfAbsent(ip) { Stats() }
+        stat.active.incrementAndGet()
+        stat.lastSeen = System.currentTimeMillis()
         var upstream: Socket? = null
         try {
             client.tcpNoDelay = true
@@ -90,6 +110,9 @@ class ProxyServer(
             }
             val (method, target, version) = parts
             val headers = lines.drop(1).filter { it.isNotEmpty() }
+            headers.firstOrNull { it.startsWith("user-agent:", ignoreCase = true) }
+                ?.let { deviceHint(it.substringAfter(':')) }
+                ?.let { stat.hint = it }
 
             val up = (if (method.equals("CONNECT", ignoreCase = true)) {
                 openTunnel(client, target)
@@ -100,14 +123,15 @@ class ProxyServer(
 
             sockets += up
             client.soTimeout = 0
-            relay(client, input, up)
+            relay(client, input, up, stat)
         } catch (e: Exception) {
             Log.d(TAG, "connection ended: ${e.message}")
         } finally {
             runCatching { client.close() }
             upstream?.let { runCatching { it.close() }; sockets -= it }
             sockets -= client
-            onConnectionsChanged(active.decrementAndGet())
+            stat.active.decrementAndGet()
+            stat.lastSeen = System.currentTimeMillis()
         }
     }
 
@@ -189,13 +213,13 @@ class ProxyServer(
     }
 
     /** Pipe both directions until either side closes. */
-    private fun relay(client: Socket, clientIn: InputStream, upstream: Socket) {
-        val up = pool.submit(Runnable { pump(clientIn, upstream) })
-        pump(upstream.getInputStream(), client)
+    private fun relay(client: Socket, clientIn: InputStream, upstream: Socket, stat: Stats) {
+        val up = pool.submit(Runnable { pump(clientIn, upstream, stat, stat.up) })
+        pump(upstream.getInputStream(), client, stat, stat.down)
         up.cancel(true)
     }
 
-    private fun pump(from: InputStream, to: Socket) {
+    private fun pump(from: InputStream, to: Socket, stat: Stats, counter: AtomicLong) {
         val buf = ByteArray(BUF_SIZE)
         val out = to.getOutputStream()
         try {
@@ -204,6 +228,8 @@ class ProxyServer(
                 if (n < 0) break
                 out.write(buf, 0, n)
                 out.flush()
+                counter.addAndGet(n.toLong())
+                stat.lastSeen = System.currentTimeMillis()
             }
         } catch (_: IOException) {
         } finally {
@@ -261,6 +287,19 @@ class ProxyServer(
         private const val MAX_HEAD = 64 * 1024
         private const val HEADER_TIMEOUT_MS = 30_000
         private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val STALE_MS = 30 * 60 * 1000L
+
+        /** Rough device type from a User-Agent string. Order matters (iPad UAs can say "Mac"). */
+        internal fun deviceHint(ua: String): String? = when {
+            "iPhone" in ua -> "iPhone"
+            "iPad" in ua -> "iPad"
+            "Android" in ua -> "Android"
+            "CrOS" in ua -> "Chromebook"
+            "Windows" in ua -> "Windows"
+            "Macintosh" in ua || "Mac OS X" in ua -> "Mac"
+            "Linux" in ua -> "Linux"
+            else -> null
+        }
 
         private val HOP_BY_HOP = setOf(
             "connection", "proxy-connection", "keep-alive",

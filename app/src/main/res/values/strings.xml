@@ -9,7 +9,21 @@
     <string name="action_start">Start sharing</string>
     <string name="action_stop">Stop</string>
     <string name="action_cancel">Cancel</string>
-    <string name="action_regenerate">New network password</string>
+    <string name="action_edit_network">Edit network name &amp; password</string>
+    <string name="action_save">Save</string>
+    <string name="action_random_password">Random password</string>
+    <string name="dialog_network_title">Network name &amp; password</string>
+    <string name="name_helper">Wi-Fi Direct networks must start with DIRECT-</string>
+    <string name="forget_hint">Devices that joined before will need to forget the old network and rejoin.</string>
+    <string name="network_saved">Saved. Takes effect next time you start sharing.</string>
+    <string name="network_saved_restart">Saved. Restarting sharing with the new details…</string>
+
+    <string name="peers_title">Joined the network (%d)</string>
+    <string name="clients_title">Using the internet (%d)</string>
+    <string name="peers_empty">No devices yet. Join the network from another device.</string>
+    <string name="clients_empty">No traffic yet. Check the proxy is set on the device.</string>
+    <string name="client_active">%1$d open · ↑ %2$s ↓ %3$s</string>
+    <string name="client_idle">last active %1$s · ↑ %2$s ↓ %3$s</string>
 
     <string name="label_ssid">Network name</string>
     <string name="label_pass">Password</string>
@@ -18,7 +32,6 @@
     <string name="tap_to_copy">Tap a value to copy it.</string>
 
     <string name="idle_hint">Network: %1$s\nPassword: %2$s</string>
-    <string name="regenerated">New name and password saved</string>
     <string name="copied">Copied</string>
     <string name="wifi_off">Turn Wi-Fi on — it doesn\'t need to connect to a network</string>
     <string name="permission_needed">HopShare needs the Nearby devices (or Location) permission to create the network</string>

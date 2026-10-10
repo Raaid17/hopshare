@@ -31,7 +31,9 @@ The minimum supported version is Android 10 (API 29). That version added `WifiP2
 
 ## Using it
 
-**On the phone:** turn mobile data on, and turn Wi-Fi on (it doesn't need to be connected to a network). Turn off the phone's own hotspot. Then open HopShare and tap **Start sharing**. The network name and password stay the same between sessions until you tap *New network password*.
+**On the phone:** turn mobile data on, and turn Wi-Fi on (it doesn't need to be connected to a network). Turn off the phone's own hotspot. Then open HopShare and tap **Start sharing**. The network name and password stay the same between sessions. Tap *Edit network name & password* to set your own. The name always starts with `DIRECT-hs-`, which Wi-Fi Direct requires. If you change them while sharing, the app restarts the network.
+
+While sharing, the app lists the devices that joined the network and, for each IP using the proxy, its open connections, data used and a device-type guess. Android doesn't let apps link a joined device to its IP, so these are shown as two separate lists.
 
 **On the client**, join the network, then set the proxy:
 
